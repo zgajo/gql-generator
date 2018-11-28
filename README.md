@@ -3,6 +3,7 @@
 Generate queries from graphql schema, used for writing api test.
 
 ## Example
+
 ```gql
 # Sample schema
 type Query {
@@ -20,7 +21,7 @@ type User {
 ```gql
 # Sample query generated
 query user($id: Int!) {
-  user(id: $id){
+  user(id: $id) {
     id
     username
     email
@@ -30,6 +31,7 @@ query user($id: Int!) {
 ```
 
 ## Usage
+
 ```bash
 # Install
 npm install gql-generator -g
@@ -39,6 +41,9 @@ gqlg --help
 
 # Generate sample queries from schema file
 gqlg --schemaFilePath ./example/sampleTypeDef.graphql --destDirPath ./example/output
+#OR
+# Generate sample queries from schema folder
+gqlg --schemaFilePath ./example/ --destDirPath ./example/output
 ```
 
 Now the queries generated from the [`sampleTypeDef.graphql`](./example/sampleTypeDef.graphql) can be found in the destDir: [`./example/output`](./example/output).
@@ -69,20 +74,15 @@ mutation signup($username: String!, email: String!, password: String!){
   }
 }
 */
-
 ```
 
 ## Usage example
 
-Say you have a graphql schema like this: 
+Say you have a graphql schema like this:
 
 ```gql
 type Mutation {
-  signup(
-    email: String!
-    username: String!
-    password: String!
-  ): UserToken!
+  signup(email: String!, username: String!, password: String!): UserToken!
 }
 
 type UserToken {
@@ -155,6 +155,5 @@ test('signup', async () => {
 ## Notice
 
 As this tool is used for test, it expends all the fields in a query. And as we know, there might be recursive field in the query. So `gqlg` ignores the types which has been added in the parent queries already.
-
 
 > [Donate with bitcoin](https://getcryptoo.github.io/)
