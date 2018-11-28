@@ -1,6 +1,20 @@
 # gql-generator
 
-Generate queries from graphql schema, used for writing api test.
+Library originally created by timqian [`timqian`](https://github.com/timqian/gql-generator/)
+
+Generate queries from graphql schema, used for writing api test. (EDIT: Added generating queries for client. [`Darko Pranjić`](https://github.com/zgajo/))
+
+### UPDATE:
+
+By [`Darko Pranjić`](https://github.com/zgajo/):
+
+- Reading `.graphql` and `.gql` extensions.
+
+- Possibility to send only folder name (schemaFilePath) in which are all graphql types, schema will be created accordingly.
+
+- Fix for destinations path to store the generated queries on all OS. (It will be created from working directory of the Node.js process. In our case package.json parent)
+
+- Library has been originally created for writing api tests, now has a feature for generating queries for client side.
 
 ## Example
 
@@ -34,14 +48,21 @@ query user($id: Int!) {
 
 ```bash
 # Install
-npm install gql-generator -g
+npm install git+https://github.com/zgajo/gql-generator.git
 
 # see the usage
 gqlg --help
 
+# Variables
+--schemaFilePath - path of your graphql schema file
+--destDirPath - dir you want to store the generated queries
+--workingEnvironment - environment for which queries are made (server is default)
+
 # Generate sample queries from schema file
 gqlg --schemaFilePath ./example/sampleTypeDef.graphql --destDirPath ./example/output
+
 #OR
+
 # Generate sample queries from schema folder
 gqlg --schemaFilePath ./example/ --destDirPath ./example/output
 ```

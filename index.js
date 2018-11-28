@@ -9,9 +9,10 @@ const shell = require('shelljs');
 program
   .option('--schemaFilePath [value]', 'path of your graphql schema file')
   .option('--destDirPath [value]', 'dir you want to store the generated queries')
+  .option('--workingEnvironment [value]', 'environment for which queries are made')
   .parse(process.argv);
 
-const { schemaFilePath, destDirPath } = program;
+const { schemaFilePath, destDirPath, workingEnvironment } = program;
 
 console.log('[gqlg]:', `Going to create 3 folders to store the queries inside path: ${process.cwd() + destDirPath}`);
 
@@ -220,11 +221,21 @@ shell.mkdir('-p', mutationsFolder);
 shell.mkdir('-p', queriesFolder);
 shell.mkdir('-p', subscriptionsFolder);
 
-const indexJsStart = `
+const indexJsStart =
+  workingEnvironment === 'client'
+    ? `
+import gql from 'graphql-tag'
+
+`
+    : `
 const fs = require('fs');
 const path = require('path');
 
 `;
+
+let mutationExists = false;
+let queryExists = false;
+let subscriptionExists = false;
 
 let indexJsExportAll = '';
 
@@ -232,11 +243,25 @@ if (gqlSchema.getMutationType()) {
   let mutationsIndexJs = indexJsStart;
   Object.keys(gqlSchema.getMutationType().getFields()).forEach(mutationType => {
     const { query } = generateQuery(mutationType, 'Mutation');
-    fs.writeFileSync(path.join(mutationsFolder, `./${mutationType}.gql`), query);
-    mutationsIndexJs += `module.exports.${mutationType} = fs.readFileSync(path.join(__dirname, '${mutationType}.gql'), 'utf8');\n`;
+
+    // Client environment doesn't use fs, path and module.exports
+    if (workingEnvironment === 'client') {
+      mutationsIndexJs += `export const ${mutationType} = gql\`\n${query}\`;\n`;
+    } else {
+      fs.writeFileSync(path.join(mutationsFolder, `./${mutationType}.gql`), query);
+      mutationsIndexJs += `module.exports.${mutationType} = fs.readFileSync(path.join(__dirname, '${mutationType}.gql'), 'utf8');\n`;
+    }
   });
+
   fs.writeFileSync(path.join(mutationsFolder, 'index.js'), mutationsIndexJs);
-  indexJsExportAll += "module.exports.mutations = require('./mutations');\n";
+
+  // Client fetching all exported mutations and storing them into mutations
+  if (workingEnvironment === 'client') {
+    indexJsExportAll += `import * as mutations from './mutations';\n`;
+    mutationExists = true;
+  } else {
+    indexJsExportAll += "module.exports.mutations = require('./mutations');\n";
+  }
 } else {
   console.log('[gqlg warning]:', 'No mutation type found in your schema');
 }
@@ -245,11 +270,23 @@ if (gqlSchema.getQueryType()) {
   let queriesIndexJs = indexJsStart;
   Object.keys(gqlSchema.getQueryType().getFields()).forEach(queryType => {
     const { query } = generateQuery(queryType, 'Query');
-    fs.writeFileSync(path.join(queriesFolder, `./${queryType}.gql`), query);
-    queriesIndexJs += `module.exports.${queryType} = fs.readFileSync(path.join(__dirname, '${queryType}.gql'), 'utf8');\n`;
+
+    // Client environment doesn't use fs, path and module.exports
+    if (workingEnvironment === 'client') {
+      queriesIndexJs += `export const ${queryType} = gql\`\n${query}\`;\n`;
+    } else {
+      fs.writeFileSync(path.join(queriesFolder, `./${queryType}.gql`), query);
+      queriesIndexJs += `module.exports.${queryType} = fs.readFileSync(path.join(__dirname, '${queryType}.gql'), 'utf8');\n`;
+    }
   });
   fs.writeFileSync(path.join(queriesFolder, 'index.js'), queriesIndexJs);
-  indexJsExportAll += "module.exports.queries = require('./queries');\n";
+
+  if (workingEnvironment === 'client') {
+    indexJsExportAll += `import * as queries from './queries';\n`;
+    queryExists = true;
+  } else {
+    indexJsExportAll += "module.exports.queries = require('./queries');\n";
+  }
 } else {
   console.log('[gqlg warning]:', 'No query type found in your schema');
 }
@@ -258,13 +295,30 @@ if (gqlSchema.getSubscriptionType()) {
   let subscriptionsIndexJs = indexJsStart;
   Object.keys(gqlSchema.getSubscriptionType().getFields()).forEach(subscriptionType => {
     const { query } = generateQuery(subscriptionType, 'Subscription');
-    fs.writeFileSync(path.join(subscriptionsFolder, `./${subscriptionType}.gql`), query);
-    subscriptionsIndexJs += `module.exports.${subscriptionType} = fs.readFileSync(path.join(__dirname, '${subscriptionType}.gql'), 'utf8');\n`;
+
+    if (workingEnvironment === 'client') {
+      subscriptionsIndexJs += `export const ${subscriptionType} = gql\`\n${query}\`;\n`;
+    } else {
+      fs.writeFileSync(path.join(subscriptionsFolder, `./${subscriptionType}.gql`), query);
+      subscriptionsIndexJs += `module.exports.${subscriptionType} = fs.readFileSync(path.join(__dirname, '${subscriptionType}.gql'), 'utf8');\n`;
+    }
   });
   fs.writeFileSync(path.join(subscriptionsFolder, 'index.js'), subscriptionsIndexJs);
-  indexJsExportAll += "module.exports.subscriptions = require('./subscriptions');\n";
+
+  if (workingEnvironment === 'client') {
+    indexJsExportAll += `import * as subscriptions from './subscriptions';\n`;
+    subscriptionExists = true;
+  } else {
+    indexJsExportAll += "module.exports.subscriptions = require('./subscriptions');\n";
+  }
 } else {
   console.log('[gqlg warning]:', 'No subscription type found in your schema');
+}
+
+if (workingEnvironment === 'client') {
+  if (mutationExists) indexJsExportAll += `export const mutation = mutations;\n`;
+  if (queryExists) indexJsExportAll += `export const query = queries;\n`;
+  if (subscriptionExists) indexJsExportAll += `export const subscription = subscriptions;\n`;
 }
 
 fs.writeFileSync(path.join(process.cwd(), destDirPath, 'index.js'), indexJsExportAll);
