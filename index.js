@@ -4,6 +4,7 @@ const path = require('path');
 const program = require('commander');
 const { Source, buildSchema } = require('graphql');
 const del = require('del');
+const shell = require('shelljs');
 
 program
   .option('--schemaFilePath [value]', 'path of your graphql schema file')
@@ -12,9 +13,42 @@ program
 
 const { schemaFilePath, destDirPath } = program;
 
-console.log('[gqlg]:', `Going to create 3 folders to store the queries inside path: ${destDirPath}`);
-const typeDef = fs.readFileSync(schemaFilePath);
+console.log('[gqlg]:', `Going to create 3 folders to store the queries inside path: ${process.cwd() + destDirPath}`);
 
+// Make schema based on all .graphql and .gql files
+function generateSchema(dir) {
+  let newFile = '';
+
+  let walk = function(dir) {
+    let list = fs.readdirSync(dir);
+
+    list.forEach(function(file) {
+      file = dir + '/' + file;
+      let stat = fs.statSync(file);
+
+      if (stat && stat.isDirectory()) {
+        /* Recurse into a subdirectory */
+        walk(file);
+      } else {
+        /* Is a file */
+        const extension = file.split('.').pop();
+
+        if (extension.includes('graphql') || extension.includes('gql')) {
+          const currFile = fs.readFileSync(file, 'utf8');
+          newFile = newFile + currFile;
+        }
+      }
+    });
+  };
+
+  walk(dir);
+
+  return newFile;
+}
+
+const schemaIsFile = fs.lstatSync(schemaFilePath).isFile();
+
+let typeDef = schemaIsFile ? fs.readFileSync(schemaFilePath) : generateSchema(schemaFilePath);
 
 const source = new Source(typeDef);
 // const ast = parse(source);
@@ -30,7 +64,6 @@ const addQueryDepthLimit = 100;
 function cleanName(name) {
   return name.replace(/[[\]!]/g, '');
 }
-
 
 /**
  * Generate the query for the specified field
@@ -51,13 +84,13 @@ function generateQuery(curName, curParentType) {
    * @param level current depth level of the current field
    */
   function generateFieldData(name, parentType, parentFields, level) {
-  // console.log('Generating query for ', name, parentType);
+    // console.log('Generating query for ', name, parentType);
 
     const tabSize = 4;
     const field = gqlSchema.getType(parentType).getFields()[name];
 
     const meta = {
-      hasArgs: false,
+      hasArgs: false
     };
 
     // Start the query with the field name
@@ -67,16 +100,14 @@ function generateQuery(curName, curParentType) {
     if (field.args && field.args.length) {
       meta.hasArgs = true;
 
-      const argsList = field.args
-        .reduce((acc, cur) => `${acc}, ${cur.name}: $${cur.name}`, '')
-        .substring(2);
+      const argsList = field.args.reduce((acc, cur) => `${acc}, ${cur.name}: $${cur.name}`, '').substring(2);
 
       fieldStr += `(${argsList})`;
 
-      field.args.forEach((arg) => {
+      field.args.forEach(arg => {
         argTypes.push({
           name: `$${arg.name}`,
-          type: arg.type,
+          type: arg.type
         });
       });
     }
@@ -102,12 +133,9 @@ function generateQuery(curName, curParentType) {
     if (innerFields) {
       innerFieldsData = Object.keys(innerFields)
         .reduce((acc, cur) => {
-        // Don't add a field if it has been added in the query already.
-        // This happens when there is a recursive field
-          if (
-            parentFields.filter(x => x.name === cur && x.type === curTypeName)
-              .length
-          ) {
+          // Don't add a field if it has been added in the query already.
+          // This happens when there is a recursive field
+          if (parentFields.filter(x => x.name === cur && x.type === curTypeName).length) {
             return '';
           }
 
@@ -115,7 +143,7 @@ function generateQuery(curName, curParentType) {
             cur,
             curTypeName,
             [...parentFields, { name, type: curTypeName }],
-            level + 1,
+            level + 1
           );
           const curInnerFieldStr = curInnerFieldData.query;
 
@@ -145,9 +173,7 @@ function generateQuery(curName, curParentType) {
 
   const fieldData = generateFieldData(curName, curParentType, [], 1);
 
-  const argStr = argTypes
-    .map(argType => `${argType.name}: ${argType.type}`)
-    .join(', ');
+  const argStr = argTypes.map(argType => `${argType.name}: ${argType.type}`).join(', ');
 
   // Add the root type of the query
   switch (curParentType) {
@@ -157,8 +183,7 @@ function generateQuery(curName, curParentType) {
     case gqlSchema.getMutationType() && gqlSchema.getMutationType().name:
       query += `mutation ${curName}${argStr ? `(${argStr})` : ''}`;
       break;
-    case gqlSchema.getSubscriptionType()
-      && gqlSchema.getSubscriptionType().name:
+    case gqlSchema.getSubscriptionType() && gqlSchema.getSubscriptionType().name:
       query += `subscription ${curName}${argStr ? `(${argStr})` : ''}`;
       break;
     default:
@@ -176,16 +201,24 @@ function generateQuery(curName, curParentType) {
   return { query, meta };
 }
 
-const mutationsFolder = path.join(destDirPath, './mutations');
-const queriesFolder = path.join(destDirPath, './queries');
-const subscriptionsFolder = path.join(destDirPath, './subscriptions');
+// process.env.PWD is the working directory when the process was started. This stays the same for the entire process.
+// it can be problems with windows
 
+// The process.cwd() method returns the current working directory of the Node.js process. In out case package.json
+const mutationsFolder = path.join(process.cwd(), destDirPath, './mutations');
+const queriesFolder = path.join(process.cwd(), destDirPath, './queries');
+const subscriptionsFolder = path.join(process.cwd(), destDirPath, './subscriptions');
+
+// remove all previosly generated files
+del.sync(path.join(process.cwd(), destDirPath, './index.js'));
 del.sync(mutationsFolder);
-fs.mkdirSync(mutationsFolder);
 del.sync(queriesFolder);
-fs.mkdirSync(queriesFolder);
 del.sync(subscriptionsFolder);
-fs.mkdirSync(subscriptionsFolder);
+
+// recusively create folders
+shell.mkdir('-p', mutationsFolder);
+shell.mkdir('-p', queriesFolder);
+shell.mkdir('-p', subscriptionsFolder);
 
 const indexJsStart = `
 const fs = require('fs');
@@ -197,41 +230,41 @@ let indexJsExportAll = '';
 
 if (gqlSchema.getMutationType()) {
   let mutationsIndexJs = indexJsStart;
-  Object.keys(gqlSchema.getMutationType().getFields()).forEach((mutationType) => {
+  Object.keys(gqlSchema.getMutationType().getFields()).forEach(mutationType => {
     const { query } = generateQuery(mutationType, 'Mutation');
     fs.writeFileSync(path.join(mutationsFolder, `./${mutationType}.gql`), query);
     mutationsIndexJs += `module.exports.${mutationType} = fs.readFileSync(path.join(__dirname, '${mutationType}.gql'), 'utf8');\n`;
   });
   fs.writeFileSync(path.join(mutationsFolder, 'index.js'), mutationsIndexJs);
-  indexJsExportAll += 'module.exports.mutations = require(\'./mutations\');\n';
+  indexJsExportAll += "module.exports.mutations = require('./mutations');\n";
 } else {
   console.log('[gqlg warning]:', 'No mutation type found in your schema');
 }
 
 if (gqlSchema.getQueryType()) {
   let queriesIndexJs = indexJsStart;
-  Object.keys(gqlSchema.getQueryType().getFields()).forEach((queryType) => {
+  Object.keys(gqlSchema.getQueryType().getFields()).forEach(queryType => {
     const { query } = generateQuery(queryType, 'Query');
     fs.writeFileSync(path.join(queriesFolder, `./${queryType}.gql`), query);
     queriesIndexJs += `module.exports.${queryType} = fs.readFileSync(path.join(__dirname, '${queryType}.gql'), 'utf8');\n`;
   });
   fs.writeFileSync(path.join(queriesFolder, 'index.js'), queriesIndexJs);
-  indexJsExportAll += 'module.exports.queries = require(\'./queries\');\n';
+  indexJsExportAll += "module.exports.queries = require('./queries');\n";
 } else {
   console.log('[gqlg warning]:', 'No query type found in your schema');
 }
 
 if (gqlSchema.getSubscriptionType()) {
   let subscriptionsIndexJs = indexJsStart;
-  Object.keys(gqlSchema.getSubscriptionType().getFields()).forEach((subscriptionType) => {
+  Object.keys(gqlSchema.getSubscriptionType().getFields()).forEach(subscriptionType => {
     const { query } = generateQuery(subscriptionType, 'Subscription');
     fs.writeFileSync(path.join(subscriptionsFolder, `./${subscriptionType}.gql`), query);
     subscriptionsIndexJs += `module.exports.${subscriptionType} = fs.readFileSync(path.join(__dirname, '${subscriptionType}.gql'), 'utf8');\n`;
   });
   fs.writeFileSync(path.join(subscriptionsFolder, 'index.js'), subscriptionsIndexJs);
-  indexJsExportAll += 'module.exports.subscriptions = require(\'./subscriptions\');\n';
+  indexJsExportAll += "module.exports.subscriptions = require('./subscriptions');\n";
 } else {
   console.log('[gqlg warning]:', 'No subscription type found in your schema');
 }
 
-fs.writeFileSync(path.join(destDirPath, 'index.js'), indexJsExportAll);
+fs.writeFileSync(path.join(process.cwd(), destDirPath, 'index.js'), indexJsExportAll);
