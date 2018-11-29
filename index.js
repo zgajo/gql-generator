@@ -9,10 +9,10 @@ const shell = require('shelljs');
 program
   .option('--schemaFilePath [value]', 'path of your graphql schema file')
   .option('--destDirPath [value]', 'dir you want to store the generated queries')
-  .option('--workingEnvironment [value]', 'environment for which queries are made')
+  .option('--es6 [value]', 'environment for which queries are made')
   .parse(process.argv);
 
-const { schemaFilePath, destDirPath, workingEnvironment } = program;
+const { schemaFilePath, destDirPath, es6 } = program;
 
 console.log('[gqlg]:', `Going to create 3 folders to store the queries inside path: ${process.cwd() + destDirPath}`);
 
@@ -20,12 +20,12 @@ console.log('[gqlg]:', `Going to create 3 folders to store the queries inside pa
 function generateSchema(dir) {
   let newFile = '';
 
-  let walk = function(dir) {
-    let list = fs.readdirSync(dir);
+  const walk = function (dir) {
+    const list = fs.readdirSync(dir);
 
-    list.forEach(function(file) {
-      file = dir + '/' + file;
-      let stat = fs.statSync(file);
+    list.forEach((file) => {
+      file = `${dir}/${file}`;
+      const stat = fs.statSync(file);
 
       if (stat && stat.isDirectory()) {
         /* Recurse into a subdirectory */
@@ -36,7 +36,7 @@ function generateSchema(dir) {
 
         if (extension.includes('graphql') || extension.includes('gql')) {
           const currFile = fs.readFileSync(file, 'utf8');
-          newFile = newFile + currFile;
+          newFile += currFile;
         }
       }
     });
@@ -49,7 +49,7 @@ function generateSchema(dir) {
 
 const schemaIsFile = fs.lstatSync(schemaFilePath).isFile();
 
-let typeDef = schemaIsFile ? fs.readFileSync(schemaFilePath) : generateSchema(schemaFilePath);
+const typeDef = schemaIsFile ? fs.readFileSync(schemaFilePath) : generateSchema(schemaFilePath);
 
 const source = new Source(typeDef);
 // const ast = parse(source);
@@ -91,7 +91,7 @@ function generateQuery(curName, curParentType) {
     const field = gqlSchema.getType(parentType).getFields()[name];
 
     const meta = {
-      hasArgs: false
+      hasArgs: false,
     };
 
     // Start the query with the field name
@@ -105,10 +105,10 @@ function generateQuery(curName, curParentType) {
 
       fieldStr += `(${argsList})`;
 
-      field.args.forEach(arg => {
+      field.args.forEach((arg) => {
         argTypes.push({
           name: `$${arg.name}`,
-          type: arg.type
+          type: arg.type,
         });
       });
     }
@@ -144,7 +144,7 @@ function generateQuery(curName, curParentType) {
             cur,
             curTypeName,
             [...parentFields, { name, type: curTypeName }],
-            level + 1
+            level + 1,
           );
           const curInnerFieldStr = curInnerFieldData.query;
 
@@ -221,13 +221,12 @@ shell.mkdir('-p', mutationsFolder);
 shell.mkdir('-p', queriesFolder);
 shell.mkdir('-p', subscriptionsFolder);
 
-const indexJsStart =
-  workingEnvironment === 'client'
-    ? `
+const indexJsStart = es6
+  ? `
 import gql from 'graphql-tag'
 
 `
-    : `
+  : `
 const fs = require('fs');
 const path = require('path');
 
@@ -241,12 +240,12 @@ let indexJsExportAll = '';
 
 if (gqlSchema.getMutationType()) {
   let mutationsIndexJs = indexJsStart;
-  Object.keys(gqlSchema.getMutationType().getFields()).forEach(mutationType => {
+  Object.keys(gqlSchema.getMutationType().getFields()).forEach((mutationType) => {
     const { query } = generateQuery(mutationType, 'Mutation');
 
     // Client environment doesn't use fs, path and module.exports
-    if (workingEnvironment === 'client') {
-      mutationsIndexJs += `export const ${mutationType} = gql\`\n${query}\`;\n`;
+    if (es6) {
+      mutationsIndexJs += `export const ${mutationType} = gql\`\n${query}\`;\n\n`;
     } else {
       fs.writeFileSync(path.join(mutationsFolder, `./${mutationType}.gql`), query);
       mutationsIndexJs += `module.exports.${mutationType} = fs.readFileSync(path.join(__dirname, '${mutationType}.gql'), 'utf8');\n`;
@@ -256,8 +255,8 @@ if (gqlSchema.getMutationType()) {
   fs.writeFileSync(path.join(mutationsFolder, 'index.js'), mutationsIndexJs);
 
   // Client fetching all exported mutations and storing them into mutations
-  if (workingEnvironment === 'client') {
-    indexJsExportAll += `import * as mutations from './mutations';\n`;
+  if (es6) {
+    indexJsExportAll += "import * as mutations from './mutations';\n";
     mutationExists = true;
   } else {
     indexJsExportAll += "module.exports.mutations = require('./mutations');\n";
@@ -268,12 +267,12 @@ if (gqlSchema.getMutationType()) {
 
 if (gqlSchema.getQueryType()) {
   let queriesIndexJs = indexJsStart;
-  Object.keys(gqlSchema.getQueryType().getFields()).forEach(queryType => {
+  Object.keys(gqlSchema.getQueryType().getFields()).forEach((queryType) => {
     const { query } = generateQuery(queryType, 'Query');
 
     // Client environment doesn't use fs, path and module.exports
-    if (workingEnvironment === 'client') {
-      queriesIndexJs += `export const ${queryType} = gql\`\n${query}\`;\n`;
+    if (es6) {
+      queriesIndexJs += `export const ${queryType} = gql\`\n${query}\`;\n\n`;
     } else {
       fs.writeFileSync(path.join(queriesFolder, `./${queryType}.gql`), query);
       queriesIndexJs += `module.exports.${queryType} = fs.readFileSync(path.join(__dirname, '${queryType}.gql'), 'utf8');\n`;
@@ -281,8 +280,8 @@ if (gqlSchema.getQueryType()) {
   });
   fs.writeFileSync(path.join(queriesFolder, 'index.js'), queriesIndexJs);
 
-  if (workingEnvironment === 'client') {
-    indexJsExportAll += `import * as queries from './queries';\n`;
+  if (es6) {
+    indexJsExportAll += "import * as queries from './queries';\n";
     queryExists = true;
   } else {
     indexJsExportAll += "module.exports.queries = require('./queries');\n";
@@ -293,11 +292,11 @@ if (gqlSchema.getQueryType()) {
 
 if (gqlSchema.getSubscriptionType()) {
   let subscriptionsIndexJs = indexJsStart;
-  Object.keys(gqlSchema.getSubscriptionType().getFields()).forEach(subscriptionType => {
+  Object.keys(gqlSchema.getSubscriptionType().getFields()).forEach((subscriptionType) => {
     const { query } = generateQuery(subscriptionType, 'Subscription');
 
-    if (workingEnvironment === 'client') {
-      subscriptionsIndexJs += `export const ${subscriptionType} = gql\`\n${query}\`;\n`;
+    if (es6) {
+      subscriptionsIndexJs += `export const ${subscriptionType} = gql\`\n${query}\`;\n\n`;
     } else {
       fs.writeFileSync(path.join(subscriptionsFolder, `./${subscriptionType}.gql`), query);
       subscriptionsIndexJs += `module.exports.${subscriptionType} = fs.readFileSync(path.join(__dirname, '${subscriptionType}.gql'), 'utf8');\n`;
@@ -305,8 +304,8 @@ if (gqlSchema.getSubscriptionType()) {
   });
   fs.writeFileSync(path.join(subscriptionsFolder, 'index.js'), subscriptionsIndexJs);
 
-  if (workingEnvironment === 'client') {
-    indexJsExportAll += `import * as subscriptions from './subscriptions';\n`;
+  if (es6) {
+    indexJsExportAll += "import * as subscriptions from './subscriptions';\n";
     subscriptionExists = true;
   } else {
     indexJsExportAll += "module.exports.subscriptions = require('./subscriptions');\n";
@@ -315,10 +314,10 @@ if (gqlSchema.getSubscriptionType()) {
   console.log('[gqlg warning]:', 'No subscription type found in your schema');
 }
 
-if (workingEnvironment === 'client') {
-  if (mutationExists) indexJsExportAll += `export const mutation = mutations;\n`;
-  if (queryExists) indexJsExportAll += `export const query = queries;\n`;
-  if (subscriptionExists) indexJsExportAll += `export const subscription = subscriptions;\n`;
+if (es6) {
+  if (mutationExists) indexJsExportAll += 'export const mutation = mutations;\n';
+  if (queryExists) indexJsExportAll += 'export const query = queries;\n';
+  if (subscriptionExists) indexJsExportAll += 'export const subscription = subscriptions;\n';
 }
 
 fs.writeFileSync(path.join(process.cwd(), destDirPath, 'index.js'), indexJsExportAll);

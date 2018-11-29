@@ -2,7 +2,7 @@
 
 Library originally created by timqian [`timqian`](https://github.com/timqian/gql-generator/)
 
-Generate queries from graphql schema, used for writing api test. (EDIT: Added generating queries for client. [`Darko Pranjić`](https://github.com/zgajo/))
+Generate queries from graphql schema, used for writing api test. (EDIT: Added es6 export / import. [`Darko Pranjić`](https://github.com/zgajo/))
 
 ### UPDATE:
 
@@ -14,7 +14,7 @@ By [`Darko Pranjić`](https://github.com/zgajo/):
 
 - Fix for destinations path to store the generated queries on all OS. (It will be created from working directory of the Node.js process. In our case package.json parent)
 
-- Library has been originally created for writing api tests, now has a feature for generating queries for client side.
+- Added es6 exporting and importing feature
 
 ## Example
 
@@ -56,7 +56,7 @@ gqlg --help
 # Variables
 --schemaFilePath - path of your graphql schema file
 --destDirPath - dir you want to store the generated queries
---workingEnvironment - environment for which queries are made (server is default)
+--es6 - using es6 feature export / import
 
 # Generate sample queries from schema file
 gqlg --schemaFilePath ./example/sampleTypeDef.graphql --destDirPath ./example/output
